@@ -235,155 +235,212 @@ html, body { width:100%; height:100%; background:#0a0614; overflow:hidden; font-
 <script>
 // ─────────────────────────────────────────────
 //  STATION CONFIG
+//  tracks[] can have 2+ entries — player cycles through all of them
+//  Add new tracks to any station by extending tracks[] and durations[]
 // ─────────────────────────────────────────────
 const STATIONS = {
-  fire:  {
+
+  // 🔥 HEARTHSIDE JAZZ
+  fire: {
     name:"Hearthside Jazz", vibe:"embers in slow time · warm piano · vinyl crackle",
-    tracks: ["Embers_in_Slow_Time.mp3","Embers_in_Slow_Time__1_.mp3"],
-    durations: [185.9, 189.6],
+    tracks: [
+      "Golden Ember Walk.mp3",
+      "Golden Ember Walk (1).mp3",
+      "Midnight Window Glow.mp3",
+      "Midnight Window Glow (1).mp3",
+      "Crackling Coffee Cups.mp3",
+      "Crackling Coffee Cups (1).mp3"
+    ],
+    durations: [124.32, 178.56, 198.60, 229.46, 141.31, 217.80],
     accent:"#ff8c42", glow:"rgba(255,140,66,0.5)", wash:"#b04a08",
     bgFilter:"brightness(0.86) saturate(1.2) sepia(0.14) hue-rotate(-8deg)",
     vizR:255,vizG:140,vizB:66
   },
+
+  // 🐠 OCEAN DRIFT
   ocean: {
     name:"Ocean Drift", vibe:"ocean breeze · lofi drift · coastal warmth",
-    tracks: ["Ocean_Breeze_Lofi_Drift.mp3","Ocean_Breeze_Lofi_Drift__1_.mp3"],
-    durations: [193.7, 222.1],
+    tracks: [
+      "Sunlit Breakers.mp3",
+      "Sunlit Breakers (1).mp3",
+      "Tideglass Afternoon.mp3",
+      "Tideglass Afternoon (1).mp3",
+      "Sunset Saltwater Drift.mp3",
+      "Sunset Saltwater Drift (1).mp3"
+    ],
+    durations: [188.47, 168.96, 198.84, 192.02, 216.26, 281.90],
     accent:"#4ecdc4", glow:"rgba(78,205,196,0.5)", wash:"#0d6070",
     bgFilter:"brightness(0.78) saturate(1.55) hue-rotate(165deg)",
     vizR:78,vizG:205,vizB:196
   },
+
+  // 🌙 MIDNIGHT STUDY
   dream: {
     name:"Midnight Study", vibe:"midnight purple raindrops · late night haze",
-    tracks: ["Midnight_Purple_Raindrops.mp3","Midnight_Purple_Raindrops__1_.mp3"],
-    durations: [284.7, 208.6],
+    tracks: [
+      "Midnight Vinyl Rain.mp3",
+      "Midnight Vinyl Rain (1).mp3",
+      "2AM Constellations.mp3",
+      "2AM Constellations (1).mp3",
+      "Midnight Through Wet Glass.mp3",
+      "Midnight Through Wet Glass (1).mp3"
+    ],
+    durations: [225.19, 241.51, 239.59, 232.99, 359.83, 239.59],
     accent:"#c778dd", glow:"rgba(199,120,221,0.5)", wash:"#4a1068",
     bgFilter:"brightness(0.72) saturate(1.4) hue-rotate(220deg)",
     vizR:199,vizG:120,vizB:221
   },
+
+  // 📚 DEEP FOCUS
   study: {
     name:"Deep Focus", vibe:"steam on the window · warm focus · jazz cafe",
-    tracks: ["Steam_on_the_Window.mp3","Steam_on_the_Window__1_.mp3"],
-    durations: [233.0, 138.8],
+    tracks: [
+      "Sepia Steam.mp3",
+      "Sepia Steam (1).mp3",
+      "Sepia Steam Study.mp3",
+      "Sepia Steam Study (1).mp3",
+      "Sepia Study Steam.mp3",
+      "Sepia Study Steam (1).mp3",
+      "Sepia Steam Study Jam.mp3",
+      "Sepia Steam Study Jam (1).mp3"
+    ],
+    durations: [209.66, 203.64, 165.00, 199.80, 209.28, 204.79, 210.02, 230.59],
     accent:"#f4c95d", glow:"rgba(244,201,93,0.5)", wash:"#6a4800",
     bgFilter:"brightness(0.84) saturate(1.05) sepia(0.24)",
     vizR:244,vizG:201,vizB:93
   },
+
+  // ✨ DREAM STATE
   sleep: {
     name:"Dream State", vibe:"rain drunk music box · drift · 432hz",
-    tracks: ["Rain-Drunk_Music_Box.mp3","Rain-Drunk_Music_Box__1_.mp3"],
-    durations: [263.4, 240.0],
+    tracks: [
+      "Rainy Room Music Box.mp3",
+      "Rainy Room Music Box (1).mp3",
+      "Pastel Rain Windows.mp3",
+      "Pastel Rain Windows (1).mp3",
+      "Clouds On The Windowsill.mp3",
+      "Clouds On The Windowsill (1).mp3"
+    ],
+    durations: [262.15, 164.04, 338.40, 365.04, 177.50, 218.66],
     accent:"#7eb8f7", glow:"rgba(126,184,247,0.5)", wash:"#08205a",
     bgFilter:"brightness(0.58) saturate(1.6) hue-rotate(190deg)",
     vizR:126,vizG:184,vizB:247
   }
+
 };
 
+// Station rotation order for autoplay
+const STATION_ORDER = ['fire','ocean','dream','study','sleep'];
+
 // ─────────────────────────────────────────────
-//  CROSSFADE ENGINE
+//  CROSSFADE ENGINE (multi-track, n tracks per station)
+//  Cycles through all tracks in buffers[] in order, looping back.
 // ─────────────────────────────────────────────
 class CrossfadePlayer {
   constructor(ctx, masterGain) {
     this.ctx = ctx;
     this.masterGain = masterGain;
-    this.buffers = [null, null];
-    this.sources = [null, null];
-    this.gains   = [null, null];
-    this.filters = [null, null];
-    this.durations = [0, 0];
-    this.fadeTimes = [25, 25];
-    this.playing = false;
-    this.activeIdx = 0;
+    this.buffers   = [];   // array of AudioBuffers (all tracks for this station)
+    this.durations = [];   // matching durations in seconds
+    this.playing   = false;
+    this.trackIdx  = 0;    // which track is currently playing (outgoing)
     this.fadeTimer = null;
-    this.startTimes = [0, 0];
-    this._stopped = false;
+    this._stopped  = false;
+
+    // We keep a slot for the current playing source+gain+filter
+    this._activeSlot  = null;
+    this._incomingSlot = null;
   }
 
-  _calcFade(dur) {
-    return Math.min(25, Math.max(8, dur * 0.12));
-  }
-
-  setBuffers(buf0, buf1, dur0, dur1) {
-    this.buffers   = [buf0, buf1];
-    this.durations = [dur0, dur1];
-    this.fadeTimes = [this._calcFade(dur0), this._calcFade(dur1)];
-  }
+  _calcFade(dur) { return Math.min(25, Math.max(8, dur * 0.12)); }
 
   _eqPower(t) { return Math.cos(t * Math.PI * 0.5); }
 
-  _createSource(idx) {
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.buffers[idx];
+  setBuffers(buffers, durations) {
+    this.buffers   = buffers;
+    this.durations = durations;
+  }
+
+  _createSlot(bufIdx) {
+    const src  = this.ctx.createBufferSource();
+    src.buffer = this.buffers[bufIdx];
     const filt = this.ctx.createBiquadFilter();
-    filt.type = 'lowpass';
+    filt.type  = 'lowpass';
     filt.frequency.value = 20000;
     const gain = this.ctx.createGain();
     gain.gain.value = 0;
     src.connect(filt);
     filt.connect(gain);
     gain.connect(this.masterGain);
-    this.sources[idx] = src;
-    this.gains[idx]   = gain;
-    this.filters[idx] = filt;
-    return src;
+    return { src, filt, gain, bufIdx };
   }
 
-  start(startIdx = 0) {
+  _killSlot(slot) {
+    if (!slot) return;
+    const now = this.ctx.currentTime;
+    try {
+      slot.gain.gain.cancelScheduledValues(now);
+      slot.gain.gain.linearRampToValueAtTime(0, now + 1.5);
+      setTimeout(() => {
+        try { slot.src.stop(); } catch(e){}
+        try { slot.src.disconnect(); } catch(e){}
+      }, 1600);
+    } catch(e) {}
+  }
+
+  start(startTrackIdx = 0) {
     if (this._stopped) return;
-    this._stopped = false;
-    this.activeIdx = startIdx;
-    this._playTrack(startIdx, 1.0);
-    this._scheduleCrossfade(startIdx);
-    this.playing = true;
-  }
-
-  _playTrack(idx, targetVol) {
-    const src  = this._createSource(idx);
-    const gain = this.gains[idx];
+    this.trackIdx = startTrackIdx % this.buffers.length;
+    const slot = this._createSlot(this.trackIdx);
     const now  = this.ctx.currentTime;
-    gain.gain.cancelScheduledValues(now);
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(targetVol, now + 2);
-    src.start(now);
-    this.startTimes[idx] = now;
+    slot.gain.gain.setValueAtTime(0, now);
+    slot.gain.gain.linearRampToValueAtTime(1.0, now + 2);
+    slot.src.start(now);
+    this._activeSlot = slot;
+    this.playing = true;
+    this._scheduleCrossfade();
   }
 
-  _scheduleCrossfade(outIdx) {
+  _scheduleCrossfade() {
     if (this._stopped) return;
-    const dur      = this.durations[outIdx];
-    const fadeTime = this.fadeTimes[outIdx];
-    const inIdx    = 1 - outIdx;
-    const delay = dur - fadeTime;
+    const dur      = this.durations[this.trackIdx];
+    const fadeTime = this._calcFade(dur);
+    const delay    = Math.max(1, dur - fadeTime);
     this.fadeTimer = setTimeout(() => {
       if (this._stopped) return;
-      this._crossfade(outIdx, inIdx, fadeTime);
+      this._crossfade(fadeTime);
     }, delay * 1000);
   }
 
-  _crossfade(outIdx, inIdx, fadeTime) {
+  _crossfade(fadeTime) {
     if (this._stopped) return;
-    const ctx  = this.ctx;
-    const now  = ctx.currentTime;
-    this._playTrack(inIdx, 0);
-    const outGain  = this.gains[outIdx];
-    const inGain   = this.gains[inIdx];
-    const outFilt  = this.filters[outIdx];
+    const nextTrackIdx = (this.trackIdx + 1) % this.buffers.length;
+    const outSlot  = this._activeSlot;
+    const inSlot   = this._createSlot(nextTrackIdx);
+    const ctx      = this.ctx;
+    const now      = ctx.currentTime;
+
+    inSlot.gain.gain.setValueAtTime(0, now);
+    inSlot.src.start(now);
+    this._incomingSlot = inSlot;
+
     const steps = 60;
     for (let i = 0; i <= steps; i++) {
-      const t   = i / steps;
-      const time = now + (t * fadeTime);
-      outGain.gain.linearRampToValueAtTime(this._eqPower(t), time);
-      inGain.gain.linearRampToValueAtTime(Math.sin(t * Math.PI * 0.5), time);
-      outFilt.frequency.linearRampToValueAtTime(20000 - (19600 * t), time);
+      const t    = i / steps;
+      const time = now + t * fadeTime;
+      outSlot.gain.gain.linearRampToValueAtTime(this._eqPower(t), time);
+      inSlot.gain.gain.linearRampToValueAtTime(Math.sin(t * Math.PI * 0.5), time);
+      outSlot.filt.frequency.linearRampToValueAtTime(20000 - 19600 * t, time);
     }
+
     setTimeout(() => {
       if (this._stopped) return;
-      try {
-        this.sources[outIdx].stop();
-        this.sources[outIdx].disconnect();
-      } catch(e) {}
-      this.activeIdx = inIdx;
-      this._scheduleCrossfade(inIdx);
+      try { outSlot.src.stop(); } catch(e){}
+      try { outSlot.src.disconnect(); } catch(e){}
+      this.trackIdx    = nextTrackIdx;
+      this._activeSlot = inSlot;
+      this._incomingSlot = null;
+      this._scheduleCrossfade();
     }, fadeTime * 1000 + 100);
   }
 
@@ -391,19 +448,10 @@ class CrossfadePlayer {
     this._stopped = true;
     this.playing  = false;
     clearTimeout(this.fadeTimer);
-    [0, 1].forEach(i => {
-      try {
-        if (this.gains[i]) {
-          const now = this.ctx.currentTime;
-          this.gains[i].gain.cancelScheduledValues(now);
-          this.gains[i].gain.linearRampToValueAtTime(0, now + 1.5);
-        }
-        setTimeout(() => {
-          try { this.sources[i] && this.sources[i].stop(); } catch(e){}
-          try { this.sources[i] && this.sources[i].disconnect(); } catch(e){}
-        }, 1600);
-      } catch(e) {}
-    });
+    this._killSlot(this._activeSlot);
+    this._killSlot(this._incomingSlot);
+    this._activeSlot   = null;
+    this._incomingSlot = null;
   }
 }
 
@@ -415,6 +463,32 @@ let masterGain  = null;
 let currentPlayer = null;
 let entered = false;
 const bufferCache = {};
+
+// ─────────────────────────────────────────────
+//  AUTOPLAY / STATION ROTATION STATE
+//  After all tracks in a station finish, the player automatically
+//  moves to the next station in STATION_ORDER (wrapping around).
+//  A user click resets to that station and continues the loop from there.
+// ─────────────────────────────────────────────
+let autoRotateTimer = null;
+let currentStationKey = null;
+
+function getTotalDuration(key) {
+  // Use actual loaded durations if available (accounts for any skipped tracks)
+  if (bufferCache[key]) return bufferCache[key].durations.reduce((a, b) => a + b, 0);
+  return STATIONS[key].durations.reduce((a, b) => a + b, 0);
+}
+
+function scheduleStationRotation(key) {
+  clearTimeout(autoRotateTimer);
+  const totalMs = getTotalDuration(key) * 1000;
+  autoRotateTimer = setTimeout(() => {
+    if (!entered) return;
+    const keys = STATION_ORDER;
+    const nextKey = keys[(keys.indexOf(currentStationKey) + 1) % keys.length];
+    playStation(nextKey, window.innerWidth / 2, window.innerHeight / 2, true);
+  }, totalMs - 3000); // transition 3s before station ends
+}
 
 function ensureContext() {
   if (audioCtx) return;
@@ -431,9 +505,30 @@ async function loadBuffer(url) {
   return audioCtx.decodeAudioData(arrayBuf);
 }
 
-async function playStation(key, x, y) {
+// Loads all tracks for a station, silently skipping any that fail to load.
+// Returns { buffers, durations } with only the tracks that loaded successfully.
+async function loadStationBuffers(key) {
+  const s = STATIONS[key];
+  const results = await Promise.allSettled(s.tracks.map(t => loadBuffer(t)));
+  const buffers   = [];
+  const durations = [];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') {
+      buffers.push(r.value);
+      durations.push(s.durations[i]);
+    } else {
+      console.warn(`Skipping missing track: ${s.tracks[i]}`);
+    }
+  });
+  if (buffers.length === 0) throw new Error(`No tracks loaded for station: ${key}`);
+  return { buffers, durations };
+}
+
+async function playStation(key, x, y, isAutoRotate = false) {
   if (!entered) return;
   const s = STATIONS[key];
+  currentStationKey = key;
+
   ripple(x, y, s.glow);
   document.getElementById('station-name').textContent  = s.name;
   document.getElementById('station-vibe').textContent  = s.vibe;
@@ -461,17 +556,18 @@ async function playStation(key, x, y) {
     ensureContext();
     if (audioCtx.state === 'suspended') await audioCtx.resume();
     if (!bufferCache[key]) {
-      const [b0, b1] = await Promise.all([
-        loadBuffer(s.tracks[0]),
-        loadBuffer(s.tracks[1])
-      ]);
-      bufferCache[key] = [b0, b1];
+      const { buffers, durations } = await loadStationBuffers(key);
+      bufferCache[key] = { buffers, durations };
     }
     loading.classList.remove('visible');
     const player = new CrossfadePlayer(audioCtx, masterGain);
-    player.setBuffers(bufferCache[key][0], bufferCache[key][1], s.durations[0], s.durations[1]);
+    player.setBuffers(bufferCache[key].buffers, bufferCache[key].durations);
     player.start(0);
     currentPlayer = player;
+
+    // Schedule automatic rotation to next station
+    scheduleStationRotation(key);
+
   } catch(err) {
     loading.classList.remove('visible');
     console.warn('Audio error:', err.message);
@@ -585,7 +681,8 @@ function ripple(x, y, c) {
 document.querySelectorAll('.stn').forEach(b =>
   b.addEventListener('click', e => {
     if (!entered) return;
-    playStation(b.dataset.key, e.clientX, e.clientY);
+    clearTimeout(autoRotateTimer); // user took control — reset the rotation timer
+    playStation(b.dataset.key, e.clientX, e.clientY, false);
   })
 );
 
